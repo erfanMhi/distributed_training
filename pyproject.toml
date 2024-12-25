@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "distributed-training"
+version = "0.1.0"
+description = "Distributed training with PyTorch DDP"
+authors = ["Erfan Miahi <mhi.erfan1@gmail.com>"]
+packages = [
+    { include = "src" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+torch = "^2.5.1"
+numpy = ">=2.2.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api" 

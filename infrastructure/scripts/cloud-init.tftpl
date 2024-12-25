@@ -1,0 +1,32 @@
+users:
+ - name: ${vm_username}
+   sudo: ALL=(ALL) NOPASSWD:ALL
+   shell: /bin/bash
+   ssh_authorized_keys:
+    - ${ssh_public_key}
+
+write_files:
+  - path: /home/${vm_username}/setup_and_run.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      cd /home/${vm_username}
+      # Clone the repository
+      git clone https://github.com/your-repo/distributed_training.git
+      cd distributed_training
+      
+      # Install Poetry
+      curl -sSL https://install.python-poetry.org | python3 -
+      export PATH="/home/${vm_username}/.local/bin:$PATH"
+      
+      # Install dependencies and run training
+      poetry install
+      poetry run python src/multigpu_single_node.py ${epochs} ${save_frequency} --batch_size ${batch_size}
+
+runcmd:
+  - sudo mkdir -p /mnt/filesystem
+  - sudo mount -t virtiofs ${fs_device_name} /mnt/filesystem
+  - >-
+      echo ${fs_device_name} /mnt/filesystem
+      "virtiofs" "defaults" "0" "2" | sudo tee -a /etc/fstab
+  - su - ${vm_username} -c "bash /home/${vm_username}/setup_and_run.sh" 

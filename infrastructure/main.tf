@@ -65,19 +65,12 @@ resource "nebius_compute_v1_instance" "training_h100" {
       }
     }
   ]
-  cloud_init_user_data = <<EOF
-users:
- - name: ${var.vm_username}
-   sudo: ALL=(ALL) NOPASSWD:ALL
-   shell: /bin/bash
-   ssh_authorized_keys:
-    - ${file(var.vm_ssh_public_key_path)}
-
-runcmd:
-  - sudo mkdir -p /mnt/filesystem
-  - sudo mount -t virtiofs ${local.fs_device_name} /mnt/filesystem
-  - >-
-      echo ${local.fs_device_name} /mnt/filesystem
-      "virtiofs" "defaults" "0" "2" | sudo tee -a /etc/fstab
-EOF
+  cloud_init_user_data = templatefile("${path.module}/scripts/cloud-init.tftpl", {
+    vm_username     = var.vm_username
+    ssh_public_key  = file(var.vm_ssh_public_key_path)
+    fs_device_name  = local.fs_device_name
+    epochs          = var.training_epochs
+    save_frequency  = var.save_frequency
+    batch_size      = var.training_batch_size
+  })
 }

@@ -18,3 +18,21 @@ variable "vm_ssh_public_key_path" {
   description = "The path to a public key for SSH connections to virtual machines"
   default     = "~/.ssh/id_ed25519.pub"
 }
+
+variable "training_epochs" {
+  type        = number
+  description = "Number of epochs to train"
+  default     = 10
+}
+
+variable "save_frequency" {
+  type        = number
+  description = "How often to save checkpoints"
+  default     = 5
+}
+
+variable "training_batch_size" {
+  type        = number
+  description = "Batch size for training"
+  default     = 64
+}
