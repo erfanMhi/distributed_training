@@ -36,3 +36,14 @@ variable "training_batch_size" {
   description = "Batch size for training"
   default     = 64
 }
+
+variable "cluster_size" {
+  type        = number
+  description = "Number of nodes in the GPU cluster"
+  default     = 1
+  
+  validation {
+    condition     = var.cluster_size > 0
+    error_message = "Cluster size must be greater than 0"
+  }
+}

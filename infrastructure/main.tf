@@ -33,7 +33,9 @@ resource "nebius_compute_v1_gpu_cluster" "training_fabric_3" {
 }
 
 resource "nebius_compute_v1_instance" "training_h100" {
-  name = "training-h100"
+  count = var.cluster_size
+  name  = "training-h100-${count.index + 1}"
+  
   parent_id = var.project_id
   gpu_cluster = {
     id = nebius_compute_v1_gpu_cluster.training_fabric_3.id
@@ -66,11 +68,14 @@ resource "nebius_compute_v1_instance" "training_h100" {
     }
   ]
   cloud_init_user_data = templatefile("${path.module}/scripts/cloud-init.tftpl", {
-    vm_username     = var.vm_username
-    ssh_public_key  = file(var.vm_ssh_public_key_path)
-    fs_device_name  = local.fs_device_name
-    epochs          = var.training_epochs
-    save_frequency  = var.save_frequency
-    batch_size      = var.training_batch_size
+    vm_username         = var.vm_username
+    ssh_public_key      = file(var.vm_ssh_public_key_path)
+    fs_device_name      = local.fs_device_name
+    epochs             = var.training_epochs
+    save_frequency     = var.save_frequency
+    batch_size         = var.training_batch_size
+    instance_index     = count.index
+    cluster_size       = var.cluster_size
+    master_ip          = count.index == 0 ? "" : nebius_compute_v1_instance.training_h100[0].network_interfaces[0].ip_address
   })
 }
