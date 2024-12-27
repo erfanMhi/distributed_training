@@ -69,6 +69,8 @@ export NB_AUTHKEY_PUBLIC_ID="your-public-key-id"
 export NB_SA_ID="your-service-account-id"
 ```
 
+> **⚠️ Important:** For multi-node training on Nebius Cloud, ensure you have sufficient quota allocation. You'll need quota for at least 2 GPU nodes in your target region. Check your quotas in the Nebius Cloud Console and request increases if needed before deployment.
+
 2. Deploy infrastructure:
 ```bash
 cd infrastructure
