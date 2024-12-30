@@ -13,6 +13,13 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+    StateDictType,
+    FullStateDictConfig,
+)
+from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
+from torch.distributed.fsdp.wrap import enable_wrap, wrap
 
 from src.data_utils import MyTrainDataset
 
@@ -28,6 +35,7 @@ class TrainingConfig:
     learning_rate: float
     snapshot_path: Path
     device: str = "auto"
+    parallel_strategy: str = "ddp"
 
 class DistributedEnvironment:
     """Manages distributed training setup and environment variables."""
@@ -61,16 +69,30 @@ class DistributedEnvironment:
 class ModelCheckpoint:
     """Handles model checkpointing operations."""
     
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, env: DistributedEnvironment):
         self.path = path
+        self.env = env
 
     def save(self, model: torch.nn.Module, epoch: int) -> None:
-        snapshot = {
-            "MODEL_STATE": model.module.state_dict(),
-            "EPOCHS_RUN": epoch,
-        }
-        torch.save(snapshot, self.path)
-        logger.info(f"Epoch {epoch} | Training snapshot saved at {self.path}")
+        if isinstance(model, FSDP):
+            save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+            with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
+                state_dict = model.state_dict()
+                if self.env.global_rank == 0:
+                    snapshot = {
+                        "MODEL_STATE": state_dict,
+                        "EPOCHS_RUN": epoch,
+                    }
+                    torch.save(snapshot, self.path)
+        else:
+            snapshot = {
+                "MODEL_STATE": model.module.state_dict(),
+                "EPOCHS_RUN": epoch,
+            }
+            torch.save(snapshot, self.path)
+            
+        if self.env.global_rank == 0:
+            logger.info(f"Epoch {epoch} | Training snapshot saved at {self.path}")
 
     def load(self, model: torch.nn.Module, device: str) -> Tuple[torch.nn.Module, int]:
         if not self.path.exists():
@@ -78,7 +100,14 @@ class ModelCheckpoint:
             
         logger.info("Loading snapshot")
         snapshot = torch.load(self.path, map_location=device)
-        model.load_state_dict(snapshot["MODEL_STATE"])
+        
+        if isinstance(model, FSDP):
+            load_policy = FullStateDictConfig(offload_to_cpu=True)
+            with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, load_policy):
+                model.load_state_dict(snapshot["MODEL_STATE"])
+        else:
+            model.load_state_dict(snapshot["MODEL_STATE"])
+            
         return model, snapshot["EPOCHS_RUN"]
 
 class Trainer:
@@ -93,12 +122,12 @@ class Trainer:
         env: DistributedEnvironment,
     ) -> None:
         self.env = env
-        self.checkpoint = ModelCheckpoint(Path(config.snapshot_path))
+        self.config = config
+        self.checkpoint = ModelCheckpoint(Path(config.snapshot_path), env)
         
         self.model = self._setup_model(model)
         self.train_data = train_data
         self.optimizer = optimizer
-        self.config = config
         self.epochs_run = 0
 
         logger.info(f"[{self.env.device.upper()}{self.env.global_rank}] "
@@ -107,8 +136,23 @@ class Trainer:
     def _setup_model(self, model: torch.nn.Module) -> torch.nn.Module:
         device = self.env.local_rank if self.env.is_gpu else self.env.device
         model = model.to(device)
+        
+        if self.config.parallel_strategy.lower() == "fsdp":
+            if not torch.cuda.is_available():
+                raise RuntimeError("FSDP requires CUDA to be available. Please use DDP for CPU training.")
+            model = FSDP(
+                model,
+                device_id=torch.cuda.current_device() if self.env.is_gpu else None,
+                cpu_offload=CPUOffload(offload_params=True) if not self.env.is_gpu else None,
+            )
+        else:
+            model = DDP(
+                model,
+                device_ids=[self.env.local_rank] if self.env.is_gpu else None
+            )
+            
         model, self.epochs_run = self.checkpoint.load(model, device)
-        return DDP(model, device_ids=[self.env.local_rank] if self.env.is_gpu else None)
+        return model
 
     def _run_batch(self, source, targets):
         self.optimizer.zero_grad()
@@ -151,7 +195,6 @@ def prepare_dataloader(dataset: Dataset, batch_size: int) -> DataLoader:
 def main(cfg: DictConfig) -> None:
     """Main training entry point."""
     try:
-        # Convert hydra config to TrainingConfig first
         train_config = TrainingConfig(
             max_epochs=cfg.train.total_epochs,
             save_every=cfg.train.save_every,
@@ -159,6 +202,7 @@ def main(cfg: DictConfig) -> None:
             learning_rate=cfg.train.learning_rate,
             snapshot_path=cfg.train.snapshot_path,
             device=cfg.train.get("device", "auto"),
+            parallel_strategy=cfg.train.get("parallel_strategy", "ddp"),
         )
         
         # Set up distributed environment

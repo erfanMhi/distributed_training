@@ -5,3 +5,4 @@ snapshot_path: "snapshot.pt"
 dataset_size: 2048
 learning_rate: 0.001 
 device: "auto"
+parallel_strategy: "fsdp"  # Can be "ddp" or "fsdp"
