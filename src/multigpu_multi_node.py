@@ -2,13 +2,14 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Optional, Tuple
 
 import hydra
 import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
@@ -191,10 +192,40 @@ def prepare_dataloader(dataset: Dataset, batch_size: int) -> DataLoader:
         sampler=DistributedSampler(dataset)
     )
 
+def setup_logging(cfg: DictConfig) -> None:
+    """Configure logging to write to both file and console."""
+    log_file = Path(OmegaConf.to_container(cfg.logging.file, resolve=True))
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Create formatters and handlers
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # File handler
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    
+    # Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(cfg.logging.level)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    logger.info(f"Logging setup complete. Log file: {log_file}")
+
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Main training entry point."""
     try:
+        # Setup logging first
+        setup_logging(cfg)
+        
         train_config = TrainingConfig(
             max_epochs=cfg.train.total_epochs,
             save_every=cfg.train.save_every,

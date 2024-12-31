@@ -3,6 +3,10 @@ defaults:
   - train: default
   - _self_
 
+logging:
+  level: "INFO"  # Can be "INFO", "ERROR", "DEBUG", etc.
+  file: "${hydra.run.dir}/train.log"
+
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S} 
