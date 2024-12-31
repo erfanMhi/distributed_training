@@ -19,24 +19,6 @@ variable "vm_ssh_public_key_path" {
   default     = "~/.ssh/id_ed25519.pub"
 }
 
-variable "training_epochs" {
-  type        = number
-  description = "Number of epochs to train"
-  default     = 10
-}
-
-variable "save_frequency" {
-  type        = number
-  description = "How often to save checkpoints"
-  default     = 5
-}
-
-variable "training_batch_size" {
-  type        = number
-  description = "Batch size for training"
-  default     = 64
-}
-
 variable "cluster_size" {
   type        = number
   description = "Number of nodes in the GPU cluster"

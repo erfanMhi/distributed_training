@@ -8,12 +8,26 @@ data "nebius_vpc_v1_subnet" "default" {
   name      = "default-subnet-jvzrrihy"
 }
 
-resource "nebius_compute_v1_disk" "training_boot_200gib" {
+# Boot disk for master
+resource "nebius_compute_v1_disk" "training_boot_master" {
   parent_id           = var.project_id
   type                = "NETWORK_SSD"
   block_size_bytes    = 4096
-  name                = "training-vm-disk-1"
+  name                = "training-vm-disk-master"
   size_bytes          = 214748364800 # 200 GiB
+  source_image_family = {
+    image_family = "ubuntu22.04-cuda12"
+  }
+}
+
+# Boot disks for workers
+resource "nebius_compute_v1_disk" "training_boot_workers" {
+  count              = var.cluster_size - 1
+  parent_id          = var.project_id
+  type               = "NETWORK_SSD"
+  block_size_bytes   = 4096
+  name               = "training-vm-disk-worker-${count.index}"
+  size_bytes         = 214748364800 # 200 GiB
   source_image_family = {
     image_family = "ubuntu22.04-cuda12"
   }
@@ -56,7 +70,7 @@ resource "nebius_compute_v1_instance" "training_h100_master" {
   boot_disk = {
     attach_mode   = "READ_WRITE"
     existing_disk = {
-      id = nebius_compute_v1_disk.training_boot_200gib.id
+      id = nebius_compute_v1_disk.training_boot_master.id
     }
   }
   filesystems = [
@@ -72,9 +86,6 @@ resource "nebius_compute_v1_instance" "training_h100_master" {
     vm_username         = var.vm_username
     ssh_public_key      = file(var.vm_ssh_public_key_path)
     fs_device_name      = local.fs_device_name
-    epochs             = var.training_epochs
-    save_frequency     = var.save_frequency
-    batch_size         = var.training_batch_size
     instance_index     = 0
     cluster_size       = var.cluster_size
     master_ip          = ""
@@ -107,7 +118,7 @@ resource "nebius_compute_v1_instance" "training_h100_workers" {
   boot_disk = {
     attach_mode   = "READ_WRITE"
     existing_disk = {
-      id = nebius_compute_v1_disk.training_boot_200gib.id
+      id = nebius_compute_v1_disk.training_boot_workers[count.index].id
     }
   }
   filesystems = [
@@ -123,11 +134,8 @@ resource "nebius_compute_v1_instance" "training_h100_workers" {
     vm_username         = var.vm_username
     ssh_public_key      = file(var.vm_ssh_public_key_path)
     fs_device_name      = local.fs_device_name
-    epochs             = var.training_epochs
-    save_frequency     = var.save_frequency
-    batch_size         = var.training_batch_size
     instance_index     = count.index + 1
     cluster_size       = var.cluster_size
-    master_ip          = nebius_compute_v1_instance.training_h100_master.status.network_interfaces[0].ip_address.address
+    master_ip          = split("/", nebius_compute_v1_instance.training_h100_master.status.network_interfaces[0].ip_address.address)[0]
   })
 }

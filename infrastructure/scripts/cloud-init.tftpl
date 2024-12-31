@@ -64,8 +64,7 @@ write_files:
           --master_addr=$(hostname -i) \
           --master_port=29500 \
           --nproc_per_node=8 \
-          src/multigpu_multi_node.py \
-          ${epochs} ${save_frequency} --batch_size ${batch_size}
+          src/multigpu_multi_node.py
       else
         # Wait for master node to be ready and join the training
         sleep 30  # Give master node time to start
@@ -75,8 +74,7 @@ write_files:
           --master_addr=${master_ip} \
           --master_port=29500 \
           --nproc_per_node=8 \
-          src/multigpu_multi_node.py \
-          ${epochs} ${save_frequency} --batch_size ${batch_size}
+          src/multigpu_multi_node.py
       fi
 
 runcmd:
