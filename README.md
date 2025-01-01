@@ -96,6 +96,57 @@ distributed_training/
 ```
 </details>
 
+## 🎨 Code Style Standards
+
+We maintain strict code quality standards using automated tools:
+
+### Python Style Guide
+- Line length: 79 characters
+- Style: PEP 8 with Black formatting
+- Docstrings: Google convention
+- Import order: PEP 8 style with isort
+- Type hints: Required for all functions
+
+### Tools and Configuration
+```bash
+# Install development dependencies
+poetry install --with dev
+
+# Run all checks locally
+poetry run black .        # Code formatting
+poetry run flake8 .      # Style and docstring checks
+poetry run isort .       # Import sorting
+poetry run mypy .        # Type checking
+```
+
+### Pre-commit Checks
+All PRs are automatically verified for:
+- ✅ Code formatting (Black)
+- ✅ Import ordering (isort)
+- ✅ Type hints (mypy)
+- ✅ Style compliance (flake8)
+
+### IDE Setup
+For VS Code users, add to settings.json:
+```json
+{
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true,
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "editor.rulers": [79]
+}
+```
+
+### Contributing Code
+1. Install dev dependencies: `poetry install --with dev`
+2. Format code: `poetry run black .`
+3. Sort imports: `poetry run isort .`
+4. Run type checks: `poetry run mypy .`
+5. Verify style: `poetry run flake8 .`
+
+All PRs must pass CI checks before merging.
+
 ## ⚙️ Configuration
 
 <details>
