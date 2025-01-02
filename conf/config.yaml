@@ -5,8 +5,10 @@ defaults:
 
 logging:
   level: "INFO"  # Can be "INFO", "ERROR", "DEBUG", etc.
-  file: "${hydra.run.dir}/train.log"
+  file: "${hydra:runtime.output_dir}/train.log"
 
 hydra:
   run:
-    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S} 
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: True 
