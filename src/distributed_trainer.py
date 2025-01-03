@@ -13,16 +13,14 @@ import torch.nn.functional as F
 from omegaconf import DictConfig
 from torch._prims_common import DeviceLikeType
 from torch.distributed import destroy_process_group, init_process_group
-from torch.distributed.fsdp import FullStateDictConfig
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp import StateDictType
-from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
 # Local imports
 from src.data_utils import MyTrainDataset
+from src.ddp_strategy import DDPStrategy
+from src.fsdp_strategy import FSDPStrategy
+from src.parallel_strategy import ParallelStrategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,33 +73,23 @@ class DistributedEnvironment:
 class ModelCheckpoint:
     """Handles model checkpointing operations."""
 
-    def __init__(self, path: Path, env: DistributedEnvironment):
+    def __init__(
+        self,
+        path: Path,
+        env: DistributedEnvironment,
+        strategy: ParallelStrategy,
+    ):
         self.path = path
         self.env = env
+        self.strategy = strategy
 
     def save(self, model: torch.nn.Module, epoch: int) -> None:
-        if isinstance(model, FSDP):
-            save_policy = FullStateDictConfig(
-                offload_to_cpu=True, rank0_only=True
-            )
-            with FSDP.state_dict_type(
-                model, StateDictType.FULL_STATE_DICT, save_policy
-            ):
-                state_dict = model.state_dict()
-                if self.env.global_rank == 0:
-                    snapshot = {
-                        "MODEL_STATE": state_dict,
-                        "EPOCHS_RUN": epoch,
-                    }
-                    torch.save(snapshot, self.path)
-        else:
-            snapshot = {
-                "MODEL_STATE": model.module.state_dict(),
+        if self.env.global_rank == 0:
+            state_dict = {
+                "MODEL_STATE": model.state_dict(),
                 "EPOCHS_RUN": epoch,
             }
-            torch.save(snapshot, self.path)
-
-        if self.env.global_rank == 0:
+            self.strategy.save_checkpoint(model, state_dict, str(self.path))
             logger.info(
                 f"Epoch {epoch} | Training snapshot saved at {self.path}"
             )
@@ -114,17 +102,7 @@ class ModelCheckpoint:
 
         logger.info("Loading snapshot")
         snapshot = torch.load(self.path, map_location=torch.device(device))
-
-        if isinstance(model, FSDP):
-            load_policy = FullStateDictConfig(offload_to_cpu=True)
-            with FSDP.state_dict_type(
-                model, StateDictType.FULL_STATE_DICT, load_policy
-            ):
-                model.load_state_dict(snapshot["MODEL_STATE"])
-        else:
-            model.load_state_dict(snapshot["MODEL_STATE"])
-
-        return model, snapshot["EPOCHS_RUN"]
+        return self.strategy.load_checkpoint(model, snapshot, device)
 
 
 class Trainer:
@@ -140,9 +118,12 @@ class Trainer:
     ) -> None:
         self.env = env
         self.config = config
-        self.checkpoint = ModelCheckpoint(Path(config.snapshot_path), env)
 
         self.model = self._setup_model(model)
+
+        self.checkpoint = ModelCheckpoint(
+            Path(config.snapshot_path), env, self._strategy
+        )
         self.train_data = train_data
         self.optimizer = optimizer
         self.epochs_run = 0
@@ -156,29 +137,23 @@ class Trainer:
         device = self.env.local_rank if self.env.is_gpu else self.env.device
         model = model.to(device)
 
+        # To give type hint to the MyPy
+        self._strategy: ParallelStrategy
+
         if self.config.parallel_strategy.lower() == "fsdp":
             if not torch.cuda.is_available():
                 raise RuntimeError(
                     "FSDP requires CUDA to be available. "
                     "Please use DDP for CPU training."
                 )
-            model = FSDP(
-                model,
-                device_id=(
-                    torch.cuda.current_device() if self.env.is_gpu else None
-                ),
-                cpu_offload=(
-                    CPUOffload(offload_params=True)
-                    if not self.env.is_gpu
-                    else None
-                ),
-            )
+            self._strategy = FSDPStrategy(self.env.is_gpu)
         else:
-            model = DDP(
-                model,
-                device_ids=[self.env.local_rank] if self.env.is_gpu else None,
-            )
+            self._strategy = DDPStrategy(self.env.local_rank, self.env.is_gpu)
 
+        self.checkpoint = ModelCheckpoint(
+            Path(self.config.snapshot_path), self.env, self._strategy
+        )
+        model = self._strategy.prepare_model(model, device)
         model, self.epochs_run = self.checkpoint.load(model, device)
         return model
 
