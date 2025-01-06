@@ -18,9 +18,9 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Local imports
 from src.data_utils import MyTrainDataset
-from src.ddp_strategy import DDPStrategy
-from src.fsdp_strategy import FSDPStrategy
-from src.parallel_strategy import ParallelStrategy
+from src.dist_strategy.ddp_strategy import DDPStrategy
+from src.dist_strategy.dist_strategy import DistributedStrategy
+from src.dist_strategy.fsdp_strategy import FSDPStrategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class ModelCheckpoint:
         self,
         path: Path,
         env: DistributedEnvironment,
-        strategy: ParallelStrategy,
+        strategy: DistributedStrategy,
     ):
         self.path = path
         self.env = env
@@ -138,7 +138,7 @@ class Trainer:
         model = model.to(device)
 
         # To give type hint to the MyPy
-        self._strategy: ParallelStrategy
+        self._strategy: DistributedStrategy
 
         if self.config.parallel_strategy.lower() == "fsdp":
             if not torch.cuda.is_available():

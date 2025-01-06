@@ -5,7 +5,7 @@ from torch._prims_common import DeviceLikeType
 from torch.nn import Module
 
 
-class ParallelStrategy(ABC):
+class DistributedStrategy(ABC):
     @abstractmethod
     def prepare_model(self, model: Module, device: Any) -> Module:
         """Wrap the model with the appropriate parallel strategy."""

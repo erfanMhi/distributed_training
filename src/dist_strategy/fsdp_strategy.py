@@ -7,10 +7,10 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import StateDictType
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
 
-from .parallel_strategy import ParallelStrategy
+from .dist_strategy import DistributedStrategy
 
 
-class FSDPStrategy(ParallelStrategy):
+class FSDPStrategy(DistributedStrategy):
     def __init__(self, is_gpu: bool):
         self.is_gpu = is_gpu
 
